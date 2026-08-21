@@ -1,0 +1,21 @@
+# Secrets — never commit
+backend/.env
+.env
+
+# Python
+backend/venv/
+backend/__pycache__/
+*.pyc
+
+# Node / Expo
+mobile-app/node_modules/
+mobile-app/.expo/
+mobile-app/npm-debug.*
+
+# Server-generated runtime state (not part of the app itself)
+services.json
+cwd
+
+# Editor/OS cruft
+.DS_Store
+*.log

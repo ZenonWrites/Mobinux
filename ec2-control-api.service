@@ -1,0 +1,14 @@
+[Unit]
+Description=EC2 Bot Control API
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/ec2-control/backend
+EnvironmentFile=/opt/ec2-control/backend/.env
+ExecStart=/opt/ec2-control/backend/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+User=ubuntu
+
+[Install]
+WantedBy=multi-user.target

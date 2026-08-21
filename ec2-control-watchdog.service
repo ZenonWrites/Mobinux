@@ -1,0 +1,9 @@
+[Unit]
+Description=EC2 Bot Watchdog (one-shot, triggered by timer)
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/ec2-control/backend
+EnvironmentFile=/opt/ec2-control/backend/.env
+ExecStart=/opt/ec2-control/backend/venv/bin/python watchdog.py
+User=ubuntu
