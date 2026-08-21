@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "Mobinux",
+    "slug": "mobinux",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "backgroundColor": "#0b0f14"
+    },
+    "android": {
+      "package": "com.zenon.mobinux",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0b0f14"
+      }
+    },
+    "plugins": [
+      "expo-secure-store"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "982e205f-2cbc-4ca0-bed7-68b765e08041"
+      }
+    }
+  }
+}

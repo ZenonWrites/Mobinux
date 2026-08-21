@@ -1,0 +1,46 @@
+name: Build and release Mobinux APK
+
+# Triggers when you push a tag like v1.0.0 — e.g.:
+#   git tag v1.0.0 && git push origin v1.0.0
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install EAS CLI
+        run: npm install -g eas-cli
+
+      - name: Build APK via EAS
+        # Requires an EXPO_TOKEN secret in this repo's Settings > Secrets
+        # and variables > Actions — generate one at https://expo.dev/accounts/[you]/settings/access-tokens
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: eas build --platform android --profile preview --non-interactive --wait --output ./mobinux.apk
+
+      - name: Create GitHub Release with the APK attached
+        uses: softprops/action-gh-release@v2
+        with:
+          files: mobile-app/mobinux.apk
+          name: Mobinux ${{ github.ref_name }}
+          body: |
+            Download `mobinux.apk` below and install it directly on an
+            Android phone (you'll need to allow "install from unknown
+            sources" for whichever app you download it with).
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
