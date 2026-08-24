@@ -12,6 +12,7 @@ import {
   TextInput,
   Keyboard,
   FlatList,
+  BackHandler,
 } from "react-native";
 import {
   getServices,
@@ -32,6 +33,7 @@ import {
   readFile,
   writeFile,
   openFileExternally,
+  getTerminalWsUrl,
   listServers,
   addServer,
   updateServer,
@@ -48,7 +50,7 @@ import {
 } from "./lib/api";
 import { tokenizeLine, langForFilename } from "./lib/highlight";
 
-type Screen = "home" | "logs" | "servers" | "serverForm" | "scriptForm" | "files";
+type Screen = "home" | "logs" | "servers" | "serverForm" | "scriptForm" | "files" | "terminal";
 
 function formatWhen(iso: string | null): string {
   if (!iso) return "unknown";
@@ -170,7 +172,7 @@ export default function App() {
           onPress: async () => {
             setBusyScriptId(script.id);
             try {
-              const res = await runCustomCommands(script.commands);
+              const res = await runCustomCommands(script.commands, true);
               setScriptResults((prev) => ({ ...prev, [script.id]: res }));
             } catch (e: any) {
               Alert.alert("Failed", e.message);
@@ -193,6 +195,44 @@ export default function App() {
     setScreen("home");
     if (ok) refresh();
   };
+
+  // Teaches Android's hardware/gesture back button about the app's own
+  // screens — without this, React Native has no navigation library
+  // wired up to intercept it, so back falls through to the OS default
+  // of closing the app entirely, from any screen.
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (!hasActiveServer) return false; // nothing to go back to yet
+      if (screen === "servers") {
+        setScreen("home");
+        return true;
+      }
+      if (screen === "serverForm") {
+        setScreen("servers");
+        return true;
+      }
+      if (screen === "files") {
+        setScreen("home");
+        return true;
+      }
+      if (screen === "terminal") {
+        setScreen("home");
+        return true;
+      }
+      if (screen === "scriptForm") {
+        setEditingScript(null);
+        setScreen("home");
+        return true;
+      }
+      if (screen === "logs") {
+        setScreen("home");
+        setLogService(null);
+        return true;
+      }
+      return false; // already on home — let the OS handle it (exit app)
+    });
+    return () => sub.remove();
+  }, [screen, hasActiveServer]);
 
   if (!ready) {
     return (
@@ -239,6 +279,9 @@ export default function App() {
   }
   if (screen === "files") {
     return <FilesScreen onBack={() => setScreen("home")} />;
+  }
+  if (screen === "terminal") {
+    return <TerminalScreen onBack={() => setScreen("home")} />;
   }
   if (screen === "scriptForm") {
     return (
@@ -301,6 +344,10 @@ export default function App() {
         <Pressable style={styles.activeServerBar} onPress={() => setScreen("servers")}>
           <Text style={styles.activeServerText}>Connected: {activeServerName}</Text>
           <Text style={styles.activeServerSwitch}>Switch</Text>
+        </Pressable>
+
+        <Pressable style={styles.terminalEntryButton} onPress={() => setScreen("terminal")}>
+          <Text style={styles.terminalEntryText}>Open Terminal</Text>
         </Pressable>
 
         {error && (
@@ -763,6 +810,17 @@ function EditorScreen({ path, onBack }: { path: string; onBack: () => void }) {
   );
   const inputRef = React.useRef<TextInput>(null);
   const scrollRef = React.useRef<ScrollView>(null);
+
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (mode === "edit") {
+        setMode("view");
+        return true;
+      }
+      return false; // falls through to FilesScreen's handler, then App's
+    });
+    return () => sub.remove();
+  }, [mode]);
   const scrollYRef = React.useRef(0);
   const [containerHeight, setContainerHeight] = useState(0);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -1026,6 +1084,111 @@ function EditorScreen({ path, onBack }: { path: string; onBack: () => void }) {
   );
 }
 
+function TerminalScreen({ onBack }: { onBack: () => void }) {
+  const [output, setOutput] = useState("");
+  const [input, setInput] = useState("");
+  const [connected, setConnected] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const wsRef = React.useRef<WebSocket | null>(null);
+  const scrollRef = React.useRef<ScrollView>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const url = await getTerminalWsUrl();
+        const ws = new WebSocket(url);
+        wsRef.current = ws;
+        ws.onopen = () => !cancelled && setConnected(true);
+        ws.onmessage = (e) => {
+          if (cancelled) return;
+          setOutput((prev) => prev + e.data);
+          requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+        };
+        ws.onerror = () => !cancelled && setError("Connection error — check server URL and key");
+        ws.onclose = () => !cancelled && setConnected(false);
+      } catch (e: any) {
+        if (!cancelled) setError(e.message);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      wsRef.current?.close();
+    };
+  }, []);
+
+  const send = (text: string) => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    wsRef.current.send(text);
+    // A piped (non-tty) bash doesn't echo what you typed back to
+    // stdout the way a real terminal does — echo it ourselves so you
+    // can see what you sent.
+    setOutput((prev) => prev + text + "\n");
+    requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+  };
+
+  const sendInput = () => {
+    if (!input.trim() && input !== "") return;
+    send(input);
+    setInput("");
+  };
+
+  // Cheap, common-case detection only — see README Limitations for
+  // what this deliberately does not attempt to handle.
+  const showYesNo = /\((y\/n)\)|\[(y\/n|Y\/n|y\/N)\]/i.test(output.slice(-300));
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <HeaderButton label="Back" onPress={onBack} />
+        <Text style={styles.title}>Terminal</Text>
+        <Text style={{ color: connected ? "#22c55e" : "#ef4444", fontSize: 12, fontWeight: "700" }}>
+          {connected ? "connected" : "..."}
+        </Text>
+      </View>
+
+      {error && <Text style={[styles.cardMeta, { paddingHorizontal: 16 }]}>{error}</Text>}
+
+      <ScrollView ref={scrollRef} style={styles.logBox}>
+        <Text style={styles.logLine}>{output || "Connecting..."}</Text>
+      </ScrollView>
+
+      {showYesNo && (
+        <View style={{ flexDirection: "row", gap: 8, paddingHorizontal: 16, marginBottom: 8 }}>
+          <Pressable
+            style={[styles.lineIconButton, { backgroundColor: "#166534", flex: 1, alignItems: "center" }]}
+            onPress={() => send("y")}
+          >
+            <Text style={styles.lineIconText}>Yes</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.lineIconButton, { backgroundColor: "#7f1d1d", flex: 1, alignItems: "center" }]}
+            onPress={() => send("n")}
+          >
+            <Text style={styles.lineIconText}>No</Text>
+          </Pressable>
+        </View>
+      )}
+
+      <View style={{ flexDirection: "row", gap: 8, padding: 16 }}>
+        <TextInput
+          value={input}
+          onChangeText={setInput}
+          placeholder="Type a command or response..."
+          placeholderTextColor="#6b7280"
+          autoCapitalize="none"
+          autoCorrect={false}
+          onSubmitEditing={sendInput}
+          style={[styles.input, { flex: 1 }]}
+        />
+        <Pressable style={styles.goButton} onPress={sendInput}>
+          <Text style={styles.actionButtonText}>Send</Text>
+        </Pressable>
+      </View>
+    </SafeAreaView>
+  );
+}
+
 function FilesScreen({ onBack }: { onBack: () => void }) {
   const [path, setPath] = useState<string>("");
   const [entries, setEntries] = useState<FileEntry[]>([]);
@@ -1033,6 +1196,21 @@ function FilesScreen({ onBack }: { onBack: () => void }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editingPath, setEditingPath] = useState<string | null>(null);
+
+  // Registered while this screen is mounted — if a file is open in the
+  // editor, back should close the editor first rather than immediately
+  // leaving the whole Files screen. Falls through (returns false) to
+  // the app-level handler otherwise.
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (editingPath) {
+        setEditingPath(null);
+        return true;
+      }
+      return false;
+    });
+    return () => sub.remove();
+  }, [editingPath]);
 
   const load = useCallback(async (target?: string) => {
     setLoading(true);
@@ -1365,6 +1543,16 @@ const styles = StyleSheet.create({
   },
   activeServerText: { color: "#9ca3af", fontSize: 13 },
   activeServerSwitch: { color: "#60a5fa", fontSize: 13, fontWeight: "600" },
+  terminalEntryButton: {
+    backgroundColor: "#1e1e1e",
+    borderWidth: 1,
+    borderColor: "#374151",
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  terminalEntryText: { color: "#22c55e", fontWeight: "700", fontFamily: "monospace" },
   card: { borderRadius: 16, padding: 20, marginBottom: 16, borderWidth: 1 },
   cardDown: { backgroundColor: "#2a1414", borderColor: "#ef4444" },
   cardLabel: { color: "#9ca3af", fontSize: 13 },

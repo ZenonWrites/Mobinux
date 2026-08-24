@@ -169,8 +169,23 @@ export const pauseSchedule = (service: string) =>
 export const resumeSchedule = (service: string) =>
   request(`/resume-schedule?service=${encodeURIComponent(service)}`, "POST");
 
-export const runCustomCommands = (commands: string[]): Promise<CustomCommandsResponse> =>
-  request("/run-custom", "POST", { commands });
+export const runCustomCommands = (
+  commands: string[],
+  resetCwdAfter = false
+): Promise<CustomCommandsResponse> =>
+  request("/run-custom", "POST", { commands, reset_cwd_after: resetCwdAfter });
+
+// Builds the WebSocket URL for the basic interactive terminal — the
+// API key travels as a query param here since React Native's
+// WebSocket implementation doesn't reliably support custom headers.
+export async function getTerminalWsUrl(): Promise<string> {
+  const { baseUrl, apiKey } = await getConfig();
+  if (!baseUrl || !apiKey) {
+    throw new Error("No server selected — add or pick one first");
+  }
+  const wsBase = baseUrl.replace(/^https:/, "wss:").replace(/^http:/, "ws:");
+  return `${wsBase}/terminal/ws?key=${encodeURIComponent(apiKey)}`;
+}
 
 // File browser — shares one "current directory" with custom commands on
 // whichever server is currently active, so a `cd` line run as a command
