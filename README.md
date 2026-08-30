@@ -26,12 +26,17 @@ Prefer to run it from source, or build it yourself? See
 Either way, you still need to deploy the backend on your own server
 first — the app is only the remote control; see below.
 
+New to the app itself? [`INSTRUCTIONS.md`](INSTRUCTIONS.md) is a full
+screen-by-screen walkthrough of how to actually use it, once it's
+installed and connected.
+
 ## What it does
 
 - **Service control** — see whether your scheduled job's last run
   succeeded, trigger it early, restart it, or pause/resume its
-  schedule. Add or remove services from the phone; no server-side
-  config editing required after initial setup.
+  schedule. Track an existing service, or **create a brand new one
+  from the app** — writes and starts a real systemd unit on the server,
+  no SSH or server-side config editing needed.
 - **Push alerts** — a lightweight watchdog checks every service on a
   timer and sends a phone notification (via [ntfy.sh](https://ntfy.sh))
   if a run failed or a schedule got disabled — independent of the app
@@ -40,9 +45,12 @@ first — the app is only the remote control; see below.
   commands (e.g. "activate venv → install deps → run") as a card on
   the home screen; one tap runs the whole sequence, stopping at the
   first failure. Each line can also be run and tested individually.
-- **Basic interactive terminal** — a live shell session, streamed over
-  a WebSocket, on its own screen — for commands that need a typed
-  response (see Limitations below for what this doesn't cover).
+- **Interactive terminal** — a real pseudo-terminal (PTY) session,
+  streamed live over a WebSocket, on its own screen — arrow-key command
+  history, Tab-completion, and Ctrl+C all work as they would in any
+  normal terminal, plus an on-screen key row for the special keys a
+  phone keyboard doesn't have (see Limitations for what's still not
+  covered).
 - **File browser + built-in editor** — browse the server's filesystem,
   open any file in a VS-Code-dark-styled in-app viewer with syntax
   highlighting, edit and save it directly, or hand it off to another
@@ -68,29 +76,23 @@ See [`docs/SETUP.md`](docs/SETUP.md) for the full deployment walkthrough.
 
 ## Limitations
 
-- **The terminal is not a full terminal emulator.** It streams a real
-  `bash` process's output live and lets you send typed lines back —
-  enough for plain prompts (`y/n`, "type your name"). It does **not**
-  allocate a pseudo-terminal (PTY), so tools that specifically check
-  for a real terminal before drawing an interactive menu — arrow-key
-  pickers like `npm create vite@latest`'s template selector — will
-  either refuse to run interactively or fall back to a plain,
-  non-interactive mode. For those, look for a flag that skips the
-  prompt instead (e.g. `npm create vite@latest my-app -- --template
-  react-ts`).
+- **The terminal is a real PTY, but a plain-text one.** Arrow-key
+  history, Tab-completion, and Ctrl+C now genuinely work — they go
+  through a real pseudo-terminal, the same mechanism any normal
+  terminal uses. What's still missing is visual rendering of programs
+  that redraw the whole screen (cursor repositioning, clearing lines,
+  colors via ANSI escape codes) — tools like `npm create vite@latest`'s
+  arrow-key template picker will receive your keypresses correctly,
+  but the picker's own redrawing won't display cleanly on the simple
+  scrolling text view here. For those, look for a flag that skips the
+  interactive prompt instead (e.g. `npm create vite@latest my-app --
+  --template react-ts`).
 - **Quick-reply buttons are pattern-matched, not understood.** The
   terminal shows Yes/No buttons when it detects a line ending in
   something like `(y/n)` or `[Y/n]`. It cannot recognize arbitrary
   multi-choice menus, and doesn't currently offer quick-reply buttons
   for anything else (e.g. tappable `localhost` URLs) — a reasonable
   future addition, not yet built.
-- **The terminal's directory tracking is best-effort.** Typing `cd` in
-  the terminal is mirrored into the same shared "current directory"
-  used by custom commands and the file browser, but only by pattern-
-  matching what you typed — not by asking `bash` for its actual
-  resulting directory. Constructs like `cd $(dirname "$x")` or
-  `pushd`/`popd` won't be picked up correctly and can leave the shared
-  directory out of sync with the terminal's real one.
 - **Editing a large file loads the whole thing.** Files over 200KB are
   only partially previewed (Section on `/files/read`); saving while
   truncated will overwrite the file with just what's shown.

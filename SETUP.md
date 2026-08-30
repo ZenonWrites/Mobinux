@@ -79,6 +79,25 @@ This rule scopes the exception to the specific user running the
 backend — check the file and adjust the username if you changed it in
 step 1.3.
 
+### 1.4.1 Let user-level services created from the app keep running
+
+Services you **create from the app itself** (as opposed to ones you
+set up yourself and just add to the tracking list) run as user-level
+systemd units — deliberately, so creating them never needs root or the
+polkit rule above at all. The one catch: by default, a user-level unit
+stops when that user's last login session ends, which on a headless
+server effectively means "whenever nothing is SSH'd in." Fix once,
+per user account:
+
+```bash
+sudo loginctl enable-linger ubuntu   # replace with your actual username
+```
+
+This tells systemd to keep that user's services running regardless of
+whether anyone is logged in — the same as any normal system service.
+Skip this and app-created services will mysteriously stop working
+after your SSH session disconnects.
+
 ### 1.5 Install the systemd units
 
 ```bash

@@ -132,11 +132,12 @@ async function request(path: string, method: "GET" | "POST" | "DELETE" = "GET", 
   return res.json();
 }
 
-export type ServiceInfo = { unit: string; label: string };
+export type ServiceInfo = { unit: string; label: string; scope: "system" | "user" };
 
 export type Status = {
   service: string;
   label: string;
+  scope: "system" | "user";
   currently_running: boolean;
   last_run_failed: boolean;
   last_run_started_at: string | null;
@@ -152,6 +153,26 @@ export type CustomCommandsResponse = { results: CommandResult[]; stopped_early: 
 export const getServices = (): Promise<ServiceInfo[]> => request("/services");
 export const addService = (label: string, unit: string) =>
   request("/services", "POST", { label, unit });
+
+// Actually authors and installs a new systemd unit (user-level, no
+// root needed) rather than just tracking an existing one.
+export const createService = (payload: {
+  label: string;
+  unit: string;
+  description?: string;
+  workingDirectory?: string;
+  execStart: string;
+  scheduleTimes?: string[]; // "HH:MM" 24-hour, e.g. ["09:30", "15:00"]
+}) =>
+  request("/services/create", "POST", {
+    label: payload.label,
+    unit: payload.unit,
+    description: payload.description ?? "",
+    working_directory: payload.workingDirectory ?? "",
+    exec_start: payload.execStart,
+    schedule_times: payload.scheduleTimes ?? [],
+  });
+
 export const removeService = (unit: string) =>
   request(`/services/${encodeURIComponent(unit)}`, "DELETE");
 

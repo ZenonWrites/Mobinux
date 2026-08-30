@@ -12,12 +12,10 @@ import {
   TextInput,
   Keyboard,
   FlatList,
-  BackHandler,
 } from "react-native";
 import {
   getServices,
   addService,
-  createService,
   removeService,
   getStatus,
   getLogs,
@@ -34,7 +32,6 @@ import {
   readFile,
   writeFile,
   openFileExternally,
-  getTerminalWsUrl,
   listServers,
   addServer,
   updateServer,
@@ -51,7 +48,7 @@ import {
 } from "./lib/api";
 import { tokenizeLine, langForFilename } from "./lib/highlight";
 
-type Screen = "home" | "logs" | "servers" | "serverForm" | "scriptForm" | "files" | "terminal";
+type Screen = "home" | "logs" | "servers" | "serverForm" | "scriptForm" | "files";
 
 function formatWhen(iso: string | null): string {
   if (!iso) return "unknown";
@@ -79,6 +76,9 @@ export default function App() {
   const [ready, setReady] = useState(false);
   const [hasActiveServer, setHasActiveServer] = useState(false);
   const [activeServerName, setActiveServerName] = useState<string>("");
+  const [newLabel, setNewLabel] = useState("");
+  const [newUnit, setNewUnit] = useState("");
+  const [addingService, setAddingService] = useState(false);
   const [editingServer, setEditingServer] = useState<ServerProfile | null>(null);
 
   const checkActiveServer = useCallback(async () => {
@@ -170,7 +170,7 @@ export default function App() {
           onPress: async () => {
             setBusyScriptId(script.id);
             try {
-              const res = await runCustomCommands(script.commands, true);
+              const res = await runCustomCommands(script.commands);
               setScriptResults((prev) => ({ ...prev, [script.id]: res }));
             } catch (e: any) {
               Alert.alert("Failed", e.message);
@@ -193,44 +193,6 @@ export default function App() {
     setScreen("home");
     if (ok) refresh();
   };
-
-  // Teaches Android's hardware/gesture back button about the app's own
-  // screens — without this, React Native has no navigation library
-  // wired up to intercept it, so back falls through to the OS default
-  // of closing the app entirely, from any screen.
-  useEffect(() => {
-    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      if (!hasActiveServer) return false; // nothing to go back to yet
-      if (screen === "servers") {
-        setScreen("home");
-        return true;
-      }
-      if (screen === "serverForm") {
-        setScreen("servers");
-        return true;
-      }
-      if (screen === "files") {
-        setScreen("home");
-        return true;
-      }
-      if (screen === "terminal") {
-        setScreen("home");
-        return true;
-      }
-      if (screen === "scriptForm") {
-        setEditingScript(null);
-        setScreen("home");
-        return true;
-      }
-      if (screen === "logs") {
-        setScreen("home");
-        setLogService(null);
-        return true;
-      }
-      return false; // already on home — let the OS handle it (exit app)
-    });
-    return () => sub.remove();
-  }, [screen, hasActiveServer]);
 
   if (!ready) {
     return (
@@ -277,9 +239,6 @@ export default function App() {
   }
   if (screen === "files") {
     return <FilesScreen onBack={() => setScreen("home")} />;
-  }
-  if (screen === "terminal") {
-    return <TerminalScreen onBack={() => setScreen("home")} />;
   }
   if (screen === "scriptForm") {
     return (
@@ -344,10 +303,6 @@ export default function App() {
           <Text style={styles.activeServerSwitch}>Switch</Text>
         </Pressable>
 
-        <Pressable style={styles.terminalEntryButton} onPress={() => setScreen("terminal")}>
-          <Text style={styles.terminalEntryText}>Open Terminal</Text>
-        </Pressable>
-
         {error && (
           <View style={[styles.card, styles.cardDown]}>
             <Text style={styles.cardMeta}>{error}</Text>
@@ -384,12 +339,7 @@ export default function App() {
                   )
                 }
               >
-                <Text style={styles.serviceLabel}>
-                  {svc.label}{" "}
-                  <Text style={styles.scopeBadge}>
-                    {svc.scope === "user" ? "(created here)" : "(system)"}
-                  </Text>
-                </Text>
+                <Text style={styles.serviceLabel}>{svc.label}</Text>
               </Pressable>
               <View
                 style={[styles.statusPill, st?.last_run_failed ? styles.statusBad : styles.statusOk]}
@@ -464,7 +414,53 @@ export default function App() {
           );
         })}
 
-        <AddServiceCard onAdded={refresh} />
+        <View style={styles.addServiceCard}>
+          <Text style={styles.cardLabel}>Add a service</Text>
+          <TextInput
+            value={newLabel}
+            onChangeText={setNewLabel}
+            placeholder="Display name, e.g. News Scraper"
+            placeholderTextColor="#6b7280"
+            style={[styles.input, { marginTop: 8 }]}
+          />
+          <TextInput
+            value={newUnit}
+            onChangeText={setNewUnit}
+            placeholder="systemd unit name, e.g. news-bot"
+            placeholderTextColor="#6b7280"
+            autoCapitalize="none"
+            style={[styles.input, { marginTop: 8 }]}
+          />
+          <Pressable
+            style={[styles.addButton, addingService && { opacity: 0.5 }]}
+            disabled={addingService}
+            onPress={async () => {
+              Keyboard.dismiss();
+              const label = newLabel.trim();
+              const unit = newUnit.trim();
+              if (!label || !unit) {
+                Alert.alert("Missing info", "Enter both a display name and the unit name.");
+                return;
+              }
+              setAddingService(true);
+              try {
+                await addService(label, unit);
+                setNewLabel("");
+                setNewUnit("");
+                await refresh();
+              } catch (e: any) {
+                Alert.alert("Couldn't add service", e.message);
+              } finally {
+                setAddingService(false);
+              }
+            }}
+          >
+            <Text style={styles.actionButtonText}>{addingService ? "Adding..." : "Add Service"}</Text>
+          </Pressable>
+          <Text style={[styles.cardMeta, { marginTop: 8 }]}>
+            Long-press a service's name above to remove it.
+          </Text>
+        </View>
 
         <Text style={styles.sectionTitle}>Scripts</Text>
 
@@ -767,17 +763,6 @@ function EditorScreen({ path, onBack }: { path: string; onBack: () => void }) {
   );
   const inputRef = React.useRef<TextInput>(null);
   const scrollRef = React.useRef<ScrollView>(null);
-
-  useEffect(() => {
-    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      if (mode === "edit") {
-        setMode("view");
-        return true;
-      }
-      return false; // falls through to FilesScreen's handler, then App's
-    });
-    return () => sub.remove();
-  }, [mode]);
   const scrollYRef = React.useRef(0);
   const [containerHeight, setContainerHeight] = useState(0);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -1041,371 +1026,6 @@ function EditorScreen({ path, onBack }: { path: string; onBack: () => void }) {
   );
 }
 
-function KeyButton({
-  label,
-  onPress,
-  danger,
-}: {
-  label: string;
-  onPress: () => void;
-  danger?: boolean;
-}) {
-  return (
-    <Pressable
-      style={[styles.keyButton, danger && { borderColor: "#ef4444" }]}
-      onPress={onPress}
-    >
-      <Text style={[styles.keyButtonText, danger && { color: "#ef4444" }]}>{label}</Text>
-    </Pressable>
-  );
-}
-
-function TerminalScreen({ onBack }: { onBack: () => void }) {
-  const [output, setOutput] = useState("");
-  const [input, setInput] = useState("");
-  const [connected, setConnected] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const wsRef = React.useRef<WebSocket | null>(null);
-  const scrollRef = React.useRef<ScrollView>(null);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-
-  useEffect(() => {
-    const showSub = Keyboard.addListener("keyboardDidShow", (e) => {
-      setKeyboardHeight(e.endCoordinates?.height ?? 0);
-    });
-    const hideSub = Keyboard.addListener("keyboardDidHide", () => setKeyboardHeight(0));
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const url = await getTerminalWsUrl();
-        const ws = new WebSocket(url);
-        wsRef.current = ws;
-        ws.onopen = () => !cancelled && setConnected(true);
-        ws.onmessage = (e) => {
-          if (cancelled) return;
-          setOutput((prev) => prev + e.data);
-          requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
-        };
-        ws.onerror = () => !cancelled && setError("Connection error — check server URL and key");
-        ws.onclose = () => !cancelled && setConnected(false);
-      } catch (e: any) {
-        if (!cancelled) setError(e.message);
-      }
-    })();
-    return () => {
-      cancelled = true;
-      wsRef.current?.close();
-    };
-  }, []);
-
-  const send = (text: string) => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-    wsRef.current.send(text);
-    // No manual echo here — this is now a real pty, which echoes typed
-    // input back through the same output stream on its own, exactly
-    // like a normal terminal.
-  };
-
-  const sendInput = () => {
-    if (!input.trim() && input !== "") return;
-    send(input + "\n");
-    setInput("");
-  };
-
-  const sendKey = (bytes: string) => send(bytes);
-
-  // Cheap, common-case detection only — see README Limitations for
-  // what this deliberately does not attempt to handle.
-  const showYesNo = /\((y\/n)\)|\[(y\/n|Y\/n|y\/N)\]/i.test(output.slice(-300));
-
-  return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <HeaderButton label="Back" onPress={onBack} />
-        <Text style={styles.title}>Terminal</Text>
-        <Text style={{ color: connected ? "#22c55e" : "#ef4444", fontSize: 12, fontWeight: "700" }}>
-          {connected ? "connected" : "..."}
-        </Text>
-      </View>
-
-      {error && <Text style={[styles.cardMeta, { paddingHorizontal: 16 }]}>{error}</Text>}
-
-      <ScrollView ref={scrollRef} style={styles.logBox}>
-        <Text style={styles.logLine}>{output || "Connecting..."}</Text>
-      </ScrollView>
-
-      {showYesNo && (
-        <View style={{ flexDirection: "row", gap: 8, paddingHorizontal: 16, marginBottom: 8 }}>
-          <Pressable
-            style={[styles.lineIconButton, { backgroundColor: "#166534", flex: 1, alignItems: "center" }]}
-            onPress={() => send("y\n")}
-          >
-            <Text style={styles.lineIconText}>Yes</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.lineIconButton, { backgroundColor: "#7f1d1d", flex: 1, alignItems: "center" }]}
-            onPress={() => send("n\n")}
-          >
-            <Text style={styles.lineIconText}>No</Text>
-          </Pressable>
-        </View>
-      )}
-
-      <View style={{ marginBottom: keyboardHeight }}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.keyToolbar}
-          contentContainerStyle={{ paddingHorizontal: 12, gap: 8 }}
-        >
-          <KeyButton label="Esc" onPress={() => sendKey("\x1b")} />
-          <KeyButton label="Tab" onPress={() => sendKey("\t")} />
-          <KeyButton label="↑" onPress={() => sendKey("\x1b[A")} />
-          <KeyButton label="↓" onPress={() => sendKey("\x1b[B")} />
-          <KeyButton label="←" onPress={() => sendKey("\x1b[D")} />
-          <KeyButton label="→" onPress={() => sendKey("\x1b[C")} />
-          <KeyButton label="Ctrl+C" onPress={() => sendKey("\x03")} danger />
-          <KeyButton label="Ctrl+D" onPress={() => sendKey("\x04")} />
-          <KeyButton label="Ctrl+L" onPress={() => sendKey("\x0c")} />
-        </ScrollView>
-
-        <View style={{ flexDirection: "row", gap: 8, padding: 16, paddingBottom: 64 }}>
-          <TextInput
-            value={input}
-            onChangeText={setInput}
-            placeholder="Type a command or response..."
-            placeholderTextColor="#6b7280"
-            autoCapitalize="none"
-            autoCorrect={false}
-            onSubmitEditing={sendInput}
-            style={[styles.input, { flex: 1 }]}
-          />
-          <Pressable style={styles.goButton} onPress={sendInput}>
-            <Text style={styles.actionButtonText}>Send</Text>
-          </Pressable>
-        </View>
-      </View>
-    </SafeAreaView>
-  );
-}
-
-function AddServiceCard({ onAdded }: { onAdded: () => void | Promise<void> }) {
-  const [mode, setMode] = useState<"track" | "create">("track");
-  const [busy, setBusy] = useState(false);
-
-  // Track existing
-  const [trackLabel, setTrackLabel] = useState("");
-  const [trackUnit, setTrackUnit] = useState("");
-
-  // Create new
-  const [label, setLabel] = useState("");
-  const [unit, setUnit] = useState("");
-  const [description, setDescription] = useState("");
-  const [workingDirectory, setWorkingDirectory] = useState("");
-  const [execStart, setExecStart] = useState("");
-  const [scheduled, setScheduled] = useState(false);
-  const [scheduleTimes, setScheduleTimes] = useState("");
-
-  const doTrack = async () => {
-    Keyboard.dismiss();
-    const l = trackLabel.trim();
-    const u = trackUnit.trim();
-    if (!l || !u) {
-      Alert.alert("Missing info", "Enter both a display name and the unit name.");
-      return;
-    }
-    setBusy(true);
-    try {
-      await addService(l, u);
-      setTrackLabel("");
-      setTrackUnit("");
-      await onAdded();
-    } catch (e: any) {
-      Alert.alert("Couldn't add service", e.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const doCreate = async () => {
-    Keyboard.dismiss();
-    const l = label.trim();
-    const u = unit.trim();
-    const cmd = execStart.trim();
-    if (!l || !u || !cmd) {
-      Alert.alert("Missing info", "Name, unit, and the command to run are required.");
-      return;
-    }
-    const times = scheduled
-      ? scheduleTimes.split(",").map((t) => t.trim()).filter(Boolean)
-      : [];
-    if (scheduled && times.length === 0) {
-      Alert.alert("Missing schedule", "Enter at least one time (e.g. 09:30, 15:00).");
-      return;
-    }
-    setBusy(true);
-    try {
-      await createService({
-        label: l,
-        unit: u,
-        description: description.trim(),
-        workingDirectory: workingDirectory.trim(),
-        execStart: cmd,
-        scheduleTimes: times,
-      });
-      setLabel("");
-      setUnit("");
-      setDescription("");
-      setWorkingDirectory("");
-      setExecStart("");
-      setScheduleTimes("");
-      await onAdded();
-    } catch (e: any) {
-      Alert.alert("Couldn't create service", e.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <View style={styles.addServiceCard}>
-      <View style={styles.modeToggleRow}>
-        <Pressable
-          style={[styles.modeToggleButton, mode === "track" && styles.modeToggleButtonActive]}
-          onPress={() => setMode("track")}
-        >
-          <Text style={[styles.modeToggleText, mode === "track" && styles.modeToggleTextActive]}>
-            Track Existing
-          </Text>
-        </Pressable>
-        <Pressable
-          style={[styles.modeToggleButton, mode === "create" && styles.modeToggleButtonActive]}
-          onPress={() => setMode("create")}
-        >
-          <Text style={[styles.modeToggleText, mode === "create" && styles.modeToggleTextActive]}>
-            Create New
-          </Text>
-        </Pressable>
-      </View>
-
-      {mode === "track" ? (
-        <>
-          <Text style={[styles.cardMeta, { marginTop: 10 }]}>
-            For a service you already set up on the server yourself.
-          </Text>
-          <TextInput
-            value={trackLabel}
-            onChangeText={setTrackLabel}
-            placeholder="Display name, e.g. News Scraper"
-            placeholderTextColor="#6b7280"
-            style={[styles.input, { marginTop: 8 }]}
-          />
-          <TextInput
-            value={trackUnit}
-            onChangeText={setTrackUnit}
-            placeholder="systemd unit name, e.g. news-bot"
-            placeholderTextColor="#6b7280"
-            autoCapitalize="none"
-            style={[styles.input, { marginTop: 8 }]}
-          />
-          <Pressable
-            style={[styles.addButton, busy && { opacity: 0.5 }]}
-            disabled={busy}
-            onPress={doTrack}
-          >
-            <Text style={styles.actionButtonText}>{busy ? "Adding..." : "Add Service"}</Text>
-          </Pressable>
-        </>
-      ) : (
-        <>
-          <Text style={[styles.cardMeta, { marginTop: 10 }]}>
-            Writes and starts a brand new systemd unit on the server —
-            no server-side setup needed first.
-          </Text>
-          <TextInput
-            value={label}
-            onChangeText={setLabel}
-            placeholder="Display name, e.g. News Scraper"
-            placeholderTextColor="#6b7280"
-            style={[styles.input, { marginTop: 8 }]}
-          />
-          <TextInput
-            value={unit}
-            onChangeText={setUnit}
-            placeholder="Unit name, e.g. news-bot"
-            placeholderTextColor="#6b7280"
-            autoCapitalize="none"
-            style={[styles.input, { marginTop: 8 }]}
-          />
-          <TextInput
-            value={description}
-            onChangeText={setDescription}
-            placeholder="Description (optional)"
-            placeholderTextColor="#6b7280"
-            style={[styles.input, { marginTop: 8 }]}
-          />
-          <TextInput
-            value={workingDirectory}
-            onChangeText={setWorkingDirectory}
-            placeholder="Working directory (optional — defaults to current)"
-            placeholderTextColor="#6b7280"
-            autoCapitalize="none"
-            style={[styles.input, { marginTop: 8 }]}
-          />
-          <TextInput
-            value={execStart}
-            onChangeText={setExecStart}
-            placeholder="Command to run, e.g. /usr/bin/python3 app.py"
-            placeholderTextColor="#6b7280"
-            autoCapitalize="none"
-            style={[styles.input, { marginTop: 8 }]}
-          />
-
-          <Pressable
-            style={styles.scheduleToggleRow}
-            onPress={() => setScheduled((v) => !v)}
-          >
-            <View style={[styles.checkbox, scheduled && styles.checkboxChecked]} />
-            <Text style={styles.cardMeta}>
-              Run on a schedule instead of continuously
-            </Text>
-          </Pressable>
-
-          {scheduled && (
-            <TextInput
-              value={scheduleTimes}
-              onChangeText={setScheduleTimes}
-              placeholder="Times (24h), comma-separated: 09:30, 13:30, 15:00"
-              placeholderTextColor="#6b7280"
-              autoCapitalize="none"
-              style={[styles.input, { marginTop: 8 }]}
-            />
-          )}
-
-          <Pressable
-            style={[styles.addButton, busy && { opacity: 0.5 }]}
-            disabled={busy}
-            onPress={doCreate}
-          >
-            <Text style={styles.actionButtonText}>{busy ? "Creating..." : "Create Service"}</Text>
-          </Pressable>
-        </>
-      )}
-
-      <Text style={[styles.cardMeta, { marginTop: 8 }]}>
-        Long-press a service's name above to remove it.
-      </Text>
-    </View>
-  );
-}
-
 function FilesScreen({ onBack }: { onBack: () => void }) {
   const [path, setPath] = useState<string>("");
   const [entries, setEntries] = useState<FileEntry[]>([]);
@@ -1413,21 +1033,6 @@ function FilesScreen({ onBack }: { onBack: () => void }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editingPath, setEditingPath] = useState<string | null>(null);
-
-  // Registered while this screen is mounted — if a file is open in the
-  // editor, back should close the editor first rather than immediately
-  // leaving the whole Files screen. Falls through (returns false) to
-  // the app-level handler otherwise.
-  useEffect(() => {
-    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      if (editingPath) {
-        setEditingPath(null);
-        return true;
-      }
-      return false;
-    });
-    return () => sub.remove();
-  }, [editingPath]);
 
   const load = useCallback(async (target?: string) => {
     setLoading(true);
@@ -1760,33 +1365,6 @@ const styles = StyleSheet.create({
   },
   activeServerText: { color: "#9ca3af", fontSize: 13 },
   activeServerSwitch: { color: "#60a5fa", fontSize: 13, fontWeight: "600" },
-  terminalEntryButton: {
-    backgroundColor: "#1e1e1e",
-    borderWidth: 1,
-    borderColor: "#374151",
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  terminalEntryText: { color: "#22c55e", fontWeight: "700", fontFamily: "monospace" },
-  keyToolbar: {
-    maxHeight: 52,
-    borderTopWidth: 1,
-    borderTopColor: "#1f2937",
-    backgroundColor: "#0b0f14",
-  },
-  keyButton: {
-    borderWidth: 1,
-    borderColor: "#374151",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    marginVertical: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  keyButtonText: { color: "#e5e7eb", fontFamily: "monospace", fontSize: 13, fontWeight: "700" },
   card: { borderRadius: 16, padding: 20, marginBottom: 16, borderWidth: 1 },
   cardDown: { backgroundColor: "#2a1414", borderColor: "#ef4444" },
   cardLabel: { color: "#9ca3af", fontSize: 13 },
@@ -1837,33 +1415,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#1f2937",
   },
-  scopeBadge: { color: "#6b7280", fontSize: 12, fontWeight: "400" },
-  modeToggleRow: { flexDirection: "row", gap: 8 },
-  modeToggleButton: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 10,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#374151",
-  },
-  modeToggleButtonActive: { backgroundColor: "#1e3a8a", borderColor: "#3b82f6" },
-  modeToggleText: { color: "#9ca3af", fontSize: 13, fontWeight: "600" },
-  modeToggleTextActive: { color: "#fff" },
-  scheduleToggleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginTop: 12,
-  },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 5,
-    borderWidth: 2,
-    borderColor: "#6b7280",
-  },
-  checkboxChecked: { backgroundColor: "#3b82f6", borderColor: "#3b82f6" },
   scriptCard: {
     borderRadius: 16,
     padding: 16,
