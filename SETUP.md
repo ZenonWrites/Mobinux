@@ -50,6 +50,7 @@ sudo ./venv/bin/pip install -r requirements.txt
 ### 1.2 Configure secrets via `.env`
 
 ```bash
+cd ~
 sudo cp .env.example /opt/ec2-control/backend/.env
 sudo nano /opt/ec2-control/backend/.env
 ```
