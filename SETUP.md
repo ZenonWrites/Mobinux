@@ -31,7 +31,7 @@ this project (auto-restart, boot persistence, real logs via
 
 ### 1.1 Install
 
-Create a backend directory right after your root directory , (Type "cd ~" to get to the root path of your terminal)
+Create a backend directory right after your root directory , (Type "cd ~" to get to the root path of your terminal). Paste all the files except the .md files and gitignore files in that directory
 
 ```bash
 sudo mkdir -p /opt/ec2-control/backend /var/lib/ec2-control
