@@ -80,6 +80,7 @@ session), Linux's `polkit` will otherwise block every restart/start/
 stop with "interactive authentication required." Fix once:
 
 ```bash
+cd ~
 sudo cp backend/49-ec2-control-nopasswd.rules /etc/polkit-1/rules.d/
 sudo systemctl restart polkit
 ```
