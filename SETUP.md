@@ -31,6 +31,8 @@ this project (auto-restart, boot persistence, real logs via
 
 ### 1.1 Install
 
+Create a backend directory right after your root directory , (Type "cd ~" to get to the root path of your terminal)
+
 ```bash
 sudo mkdir -p /opt/ec2-control/backend /var/lib/ec2-control
 sudo cp backend/*.py backend/requirements.txt /opt/ec2-control/backend/
