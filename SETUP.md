@@ -31,6 +31,12 @@ this project (auto-restart, boot persistence, real logs via
 
 ### 1.1 Install
 
+You can clone this repository for locally easier file transfers
+
+```bash
+git clone https://github.com/ZenonWrites/Mobinux.git
+```
+
 Create a backend directory right after your root directory , (Type "cd ~" to get to the root path of your terminal). Paste all the files except the .md files and gitignore files in that directory
 
 ```bash
