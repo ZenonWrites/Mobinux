@@ -111,6 +111,7 @@ after your SSH session disconnects.
 ### 1.5 Install the systemd units
 
 ```bash
+cd ~
 sudo cp backend/*.service backend/*.timer /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now ec2-control-api
