@@ -1,0 +1,10 @@
+[Unit]
+Description=Run EC2 bot watchdog every minute
+
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=60
+Unit=ec2-control-watchdog.service
+
+[Install]
+WantedBy=timers.target
