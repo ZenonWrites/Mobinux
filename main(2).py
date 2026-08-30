@@ -534,15 +534,8 @@ async def terminal_ws(websocket: WebSocket, key: str = ""):
             os.chdir(start_dir)
         except OSError:
             pass
-        # Our own process has no TERM (it's a systemd service, not
-        # something launched from a real terminal) — bash would inherit
-        # that same empty TERM and have no idea what escape sequence
-        # means "up arrow" etc., so readline just types them back as
-        # literal text instead of recognizing them as key bindings.
-        env = dict(os.environ)
-        env["TERM"] = "xterm-256color"
-        os.execvpe("/bin/bash", ["/bin/bash"], env)
-        os._exit(1)  # only reached if execvpe itself fails
+        os.execvp("/bin/bash", ["/bin/bash"])
+        os._exit(1)  # only reached if execvp itself fails
     os.close(slave_fd)
 
     loop = asyncio.get_event_loop()

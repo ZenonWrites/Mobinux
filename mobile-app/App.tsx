@@ -344,9 +344,17 @@ export default function App() {
           <Text style={styles.activeServerSwitch}>Switch</Text>
         </Pressable>
 
+        {/* Terminal entry point hidden for now — the plain-text output
+            view can't interpret ANSI escape codes, so a color-enabled
+            interactive prompt (needed for arrow-key history to work at
+            all) renders as visible garbage. Re-enable once TerminalScreen
+            is rebuilt around a real terminal renderer (xterm.js in a
+            WebView is the planned approach) — the screen and backend
+            WebSocket endpoint are both left intact below.
         <Pressable style={styles.terminalEntryButton} onPress={() => setScreen("terminal")}>
           <Text style={styles.terminalEntryText}>Open Terminal</Text>
         </Pressable>
+        */}
 
         {error && (
           <View style={[styles.card, styles.cardDown]}>
@@ -1176,7 +1184,7 @@ function TerminalScreen({ onBack }: { onBack: () => void }) {
           <KeyButton label="Ctrl+L" onPress={() => sendKey("\x0c")} />
         </ScrollView>
 
-        <View style={{ flexDirection: "row", gap: 8, padding: 16, paddingBottom: 64 }}>
+        <View style={{ flexDirection: "row", gap: 8, padding: 16, paddingBottom: 28 }}>
           <TextInput
             value={input}
             onChangeText={setInput}
