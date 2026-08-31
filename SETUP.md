@@ -42,6 +42,15 @@ Create a backend directory right after your root directory , (Type "cd ~" to get
 ```bash
 sudo mkdir -p /opt/ec2-control/backend /var/lib/ec2-control
 sudo cp backend/*.py backend/requirements.txt /opt/ec2-control/backend/
+
+# The backend runs as your regular user (ubuntu below — adjust if
+# different), not root. Fix ownership now, before creating anything
+# else inside these folders — otherwise venv/pip below would still
+# create root-owned files even inside a chowned directory, and the API
+# would throw a PermissionError the first time it tries to write
+# services.json or the shared cwd file.
+sudo chown ubuntu:ubuntu /opt/ec2-control/backend /var/lib/ec2-control
+
 cd /opt/ec2-control/backend
 sudo python3 -m venv venv
 sudo ./venv/bin/pip install -r requirements.txt
