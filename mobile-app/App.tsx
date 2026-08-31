@@ -13,6 +13,7 @@ import {
   Keyboard,
   FlatList,
   BackHandler,
+  Modal,
 } from "react-native";
 import {
   getServices,
@@ -66,6 +67,7 @@ function newId(): string {
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>("home");
+  const [showExitModal, setShowExitModal] = useState(false);
   const [services, setServices] = useState<ServiceInfo[]>([]);
   const [statuses, setStatuses] = useState<Record<string, Status>>({});
   const [scripts, setScripts] = useState<Script[]>([]);
@@ -200,7 +202,7 @@ export default function App() {
   // of closing the app entirely, from any screen.
   useEffect(() => {
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      if (!hasActiveServer) return false; // nothing to go back to yet
+      if (!hasActiveServer) return false; 
       if (screen === "servers") {
         setScreen("home");
         return true;
@@ -210,10 +212,6 @@ export default function App() {
         return true;
       }
       if (screen === "files") {
-        setScreen("home");
-        return true;
-      }
-      if (screen === "terminal") {
         setScreen("home");
         return true;
       }
@@ -227,7 +225,10 @@ export default function App() {
         setLogService(null);
         return true;
       }
-      return false; // already on home — let the OS handle it (exit app)
+      
+      // Trigger custom modal instead of native Alert
+      setShowExitModal(true);
+      return true; 
     });
     return () => sub.remove();
   }, [screen, hasActiveServer]);
@@ -544,6 +545,39 @@ export default function App() {
           <Text style={styles.commandsButtonText}>+ New Script</Text>
         </Pressable>
       </ScrollView>
+      
+      {/* --- Custom Exit Modal --- */}
+      <Modal
+        transparent={true}
+        visible={showExitModal}
+        animationType="fade"
+        onRequestClose={() => setShowExitModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Exit?</Text>
+            
+            <View style={styles.modalButtonGroup}>
+              {/* YES Button - Left side */}
+              <Pressable
+                style={styles.modalButton}
+                onPress={() => BackHandler.exitApp()}
+              >
+                <Text style={styles.modalButtonText}>Yes</Text>
+              </Pressable>
+              
+              {/* NO Button - Right side */}
+              <Pressable
+                style={[styles.modalButton, styles.modalButtonPrimary]}
+                onPress={() => setShowExitModal(false)}
+              >
+                <Text style={styles.modalButtonText}>No</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -1627,7 +1661,7 @@ function ServersScreen({
         <Pressable style={styles.commandsButton} onPress={onAddNew}>
           <Text style={styles.commandsButtonText}>+ Add Server</Text>
         </Pressable>
-      </ScrollView>
+      </ScrollView>	 
     </SafeAreaView>
   );
 }
@@ -1731,7 +1765,7 @@ function ServerFormScreen({
             <Text style={[styles.actionButtonText, { color: "#ef4444" }]}>Delete Server</Text>
           </Pressable>
         )}
-      </View>
+      </View>	
     </SafeAreaView>
   );
 }
@@ -2046,5 +2080,56 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: "center",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.65)", // Dark semi-transparent background
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  modalContent: {
+    backgroundColor: "#12181f", // Matches your app's card backgrounds
+    borderRadius: 16,
+    padding: 32, // Proper padding from all directions
+    width: "100%",
+    maxWidth: 320,
+    borderWidth: 1,
+    borderColor: "#1f2937",
+    // Subtle shadow for aesthetics
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  modalTitle: {
+    color: "#fff",
+    fontSize: 22,
+    fontWeight: "700",
+    textAlign: "center",
+    marginBottom: 32,
+  },
+  modalButtonGroup: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 16, // Space between buttons
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 14,
+    alignItems: "center",
+    borderRadius: 12,
+    backgroundColor: "#0b0f14", // Slightly darker button background
+    borderWidth: 1,
+    borderColor: "#374151", // Light aesthetic border
+  },
+  modalButtonPrimary: {
+    backgroundColor: "#1f2937", // Slightly lighter for the "No" button to emphasize it
+  },
+  modalButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
   },
 });
