@@ -73,17 +73,8 @@ def _seed_services() -> dict[str, dict]:
 
 def load_services() -> dict[str, dict]:
     if os.path.exists(SERVICES_FILE):
-        try:
-            with open(SERVICES_FILE) as f:
-                raw = json.load(f)
-        except (json.JSONDecodeError, OSError):
-            # Empty or corrupt (e.g. a concurrent write caught mid-way
-            # before the atomic-write fix below existed) — treat it the
-            # same as "doesn't exist yet" rather than crashing every
-            # request that touches a service.
-            seeded = _seed_services()
-            save_services(seeded)
-            return seeded
+        with open(SERVICES_FILE) as f:
+            raw = json.load(f)
         # Migrate the old {unit: "label"} shape transparently.
         migrated = False
         services: dict[str, dict] = {}
@@ -103,14 +94,8 @@ def load_services() -> dict[str, dict]:
 
 def save_services(services: dict[str, dict]):
     os.makedirs(os.path.dirname(SERVICES_FILE), exist_ok=True)
-    # Write to a temp file and rename it into place atomically, so a
-    # concurrent request's load_services() can never observe a
-    # half-written or truncated file — os.replace() on the same
-    # filesystem is an atomic swap, not a byte-by-byte overwrite.
-    tmp_path = f"{SERVICES_FILE}.tmp"
-    with open(tmp_path, "w") as f:
+    with open(SERVICES_FILE, "w") as f:
         json.dump(services, f, indent=2)
-    os.replace(tmp_path, SERVICES_FILE)
 
 
 def require_known_service(unit: str) -> dict:
@@ -137,10 +122,8 @@ def get_cwd() -> str:
 
 def set_cwd(path: str):
     os.makedirs(os.path.dirname(CWD_FILE), exist_ok=True)
-    tmp_path = f"{CWD_FILE}.tmp"
-    with open(tmp_path, "w") as f:
+    with open(CWD_FILE, "w") as f:
         f.write(path)
-    os.replace(tmp_path, CWD_FILE)
 
 
 def resolve_path(path: str) -> str:
