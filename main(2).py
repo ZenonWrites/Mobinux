@@ -407,17 +407,8 @@ def logs(
 ):
     check_key(x_api_key)
     entry = require_known_service(service)
-    scope = entry.get("scope", "system")
-    flag = scope_flag(scope)
-    # A user-manager unit's journal entries are tagged under a
-    # different field (_SYSTEMD_USER_UNIT=) than a system unit's
-    # (_SYSTEMD_UNIT=) — "-u"/"--unit=" only matches the latter, so a
-    # user-scope service needs "--user-unit=" specifically or
-    # journalctl silently returns nothing despite the entries existing
-    # (systemctl status's own log tail uses the correct field, which is
-    # why it can show lines that a plain journalctl -u can't find).
-    unit_flag = "--user-unit" if scope == "user" else "-u"
-    code, out = run(["journalctl", *flag, unit_flag, service, "-n", str(lines), "--no-pager"])
+    flag = scope_flag(entry.get("scope", "system"))
+    code, out = run(["journalctl", *flag, "-u", service, "-n", str(lines), "--no-pager"])
     return {"lines": out.splitlines()}
 
 
